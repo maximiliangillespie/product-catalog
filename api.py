@@ -26,20 +26,15 @@ categoriesKey = "cats:"
 '''
 TODO:
     - make server source of truth for new product key gen
-    - store actual binary rather than string
-'''
-
-'''
-REQUIREMENTS:
-    - Ability to delete product
+    - make search case sensitive? 
 '''
 
 # EXTERNAL ROUTES ===================================================
 
 @app.route("/product", methods=["POST"])
 def API_CREATE_PRODUCT():
-    product = request.get_json()
     # TODO: ERROR HANDLING
+    product = request.get_json()
     create_new_product(product)
     create_images(product['id'], product['images'])
     create_new_category(product['id'], product['mainCategory'])
@@ -47,43 +42,47 @@ def API_CREATE_PRODUCT():
 
 @app.route("/product/<product_id>", methods=["PUT"])
 def API_UPDATE_PRODUCT(product_id):
-    product = request.get_json()
     # TODO: ERROR HANDLING
+    product = request.get_json()
     update_product(product, product_id)
     create_images(product_id, product['images'])
     update_category(product_id, product['mainCategory'])
-    # TODO: update search key in search dict
     return "200"
 
 @app.route("/product/<product_id>", methods=["DELETE"])
 def API_DELETE_PRODUCT(product_id):
     # TODO: ERROR HANDLING
-    # step 1: extract mainCategory & images
-    # step 2: delete root product
-    # step 3: extract products table from category
-    # step 4: remove product id from 'prds:cat:n'
-    # step 5: grab all keys from image set & delete keys associated with those images
-    # step 6: delete images key 
+    client_key = productKey + product_id
+    mainCategory_key = client.hget(client_key, 'mainCategory')
+    images_key = client.hget(client_key, 'images')
+    product_name = client.hget(client_key, 'name')
+    # remove product from search table
+    client.hdel(productNameSearchKey, product_name)
+    # extract products table from category & remove product_id from 'prds:cat:n'
+    category_products_key = client.hget(mainCategory_key, 'products')
+    client.srem(category_products_key, product_id)
+    if (client.scard(category_products_key) == 0):
+        client.delete(mainCategory_key) # delete main category if there are no members left
+    # grab all keys from image set & delete keys associated with those images
+    for image_info_key in client.smembers(images_key):
+        client.delete(image_info_key)
+    # delete images key 
+    client.delete(images_key)
+     # delete root product
+    client.delete(client_key)
     return product_id
 
 @app.route("/product/<product_id>", methods=["GET"])
 def API_FIND_PRODUCT_BY_ID(product_id):
     # TODO: ERROR HANDLING
     client_key = productKey + product_id
-    all_keys = []
     product = {}
-    for raw_prop in client.hgetall(client_key):
-        product_prop = raw_prop
+    for product_prop in client.hgetall(client_key):
         product_val = client.hget(client_key, product_prop)
         if (product_prop == "images"):
             product_images = []
-            product_images_keys = client.smembers(product_val)
-            for product_image_key in product_images_keys:
-                tmp_img = {}
-                product_image_key_decoded = product_image_key
-                for raw_image_prop in client.hgetall(product_image_key_decoded):
-                    tmp_img[raw_image_prop] = client.hget(product_image_key_decoded, raw_image_prop)
-                product_images.append(tmp_img)
+            for product_image_key in client.smembers(product_val):
+                product_images.append(client.hgetall(product_image_key))
             product[product_prop] = product_images
         elif (product_prop == "mainCategory"):
             product_category = client.hgetall(product_val)
@@ -104,10 +103,9 @@ def API_FIND_PRODUCTS_IN_CATEGORY(category_id):
 # takes string or substring search term
 @app.route("/products/search")
 def API_SEARCH_FOR_PRODUCT():
+    # TODO: ERROR HANDLING
     search_term = request.args.get('search_term')
     return_items = []
-    # TODO: ERROR HANDLING
-    # TODO: grab potential product id's, return real JSON objects
     for search_result in client.hscan_iter(productNameSearchKey, search_term + "*"):
         return_items.append(API_FIND_PRODUCT_BY_ID(search_result[1]))
     return str(return_items)
@@ -134,8 +132,11 @@ def create_new_product(product = {}):
 
 def update_product(product = {}, product_id = -1):
     category_id = product['mainCategory']['id']
-    # create product hash
     client_key = productKey + str(product_id)
+    #update product search key
+    client.hdel(productNameSearchKey, client.hget(client_key, 'name'))
+    client.hset(productNameSearchKey, product['name'], product_id)
+    # create product hash
     for product_prop in product.keys():
         if (product_prop == "images"):
             # need special case for this. we pass in a list of images but want to provide a ref to the image list instead
