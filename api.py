@@ -47,7 +47,7 @@ def API_UPDATE_PRODUCT(product_id):
     update_product(product, product_id)
     create_images(product_id, product['images'])
     update_category(product_id, product['mainCategory'])
-    return "200"
+    return str(product_id)
 
 @app.route("/product/<product_id>", methods=["DELETE"])
 def API_DELETE_PRODUCT(product_id):
