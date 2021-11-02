@@ -201,7 +201,7 @@ def update_category(product_id = -1, category = {}):
 
 # MAIN METHOD  ===================================================
 
-app.run(debug = True)
+app.run(host='0.0.0.0', debug = True)
 
 
 # TESTING  ===================================================

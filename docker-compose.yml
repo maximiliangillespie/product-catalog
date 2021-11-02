@@ -1,0 +1,70 @@
+version: '3'
+
+networks:
+  redissentinelnet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.0.0/16
+services:
+     
+  redis-main:
+    image: redis:6.2-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      redissentinelnet:
+        ipv4_address: 10.0.0.11
+
+  redis-replica:
+    image: redis:6.2-alpine
+    command: redis-server --slaveof 10.0.0.11 6379
+    depends_on:
+      - redis-main
+    networks:
+      redissentinelnet:
+        ipv4_address: 10.0.0.12
+
+  redis-sentinel-1:
+    build:
+      context: ./docker/redis-sentinel
+    depends_on:
+      - redis-main
+    env_file: 
+      - ./docker/redis-sentinel/sentinel.env
+    links:
+      - "redis-main:redis.main.test"
+    networks:
+       - redissentinelnet
+
+  redis-sentinel-2:
+    build:
+      context: ./docker/redis-sentinel
+    depends_on:
+      - redis-main
+    env_file: 
+      - ./docker/redis-sentinel/sentinel.env
+    networks:
+      - redissentinelnet
+
+  redis-sentinel-3:
+    build:
+      context: ./docker/redis-sentinel
+    depends_on:
+      - redis-main
+    env_file: 
+      - ./docker/redis-sentinel/sentinel.env
+    networks:
+      - redissentinelnet
+
+  app:
+    image: python:3.8-alpine3.10
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./app:/usr/local/app:z
+    entrypoint: /usr/local/app/docker-entrypoint.sh
+    depends_on:
+      - redis-main
+    networks:
+      - redissentinelnet
