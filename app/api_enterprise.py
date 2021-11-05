@@ -11,7 +11,8 @@ import redis
 from flask import Flask
 from flask import request
 
-client = redis.Redis(host = 'localhost', port = '6379', charset="utf-8", decode_responses=True) #TODO: update this to be RE endpoint
+# WARNING: when dns is starting and stopping to preserve resources, this IP will change. 
+client = redis.Redis(host = '34.75.184.226', port = '12345', username="python", password='Pass123!', charset="utf-8", decode_responses=True) #TODO: update this to be RE endpoint
 app = Flask(__name__)
 
 # keys for indexing db
