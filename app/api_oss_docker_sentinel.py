@@ -8,6 +8,7 @@ it's pretty brittle at the moment – I've got quite a few todos laying around 
 '''
 
 from redis.sentinel import Sentinel
+from redis import Redis
 from flask import Flask
 from flask import request
 
@@ -40,6 +41,8 @@ imagekey = "img:"
 categoryKey = "cat:"
 categoriesKey = "cats:"
 
+# instantiate redis and sentinel instances
+# r = Redis(host = '127.0.0.1', port=26379)  # <= for trying to do pubsub stuff
 sentinel = Sentinel(conf['sentinel'],sentinel_kwargs=conf['sentinel_conf'],**conf['connection_conf'])
 sentinel.discover_master(conf['master_group_name'])
 
@@ -58,6 +61,7 @@ TODO:
 @app.route("/product", methods=["POST"])
 def API_CREATE_PRODUCT():
     # TODO: ERROR HANDLING
+    discover_master()
     product = request.get_json()
     create_new_product(product)
     create_images(product['id'], product['images'])
@@ -67,6 +71,7 @@ def API_CREATE_PRODUCT():
 @app.route("/product/<product_id>", methods=["PUT"])
 def API_UPDATE_PRODUCT(product_id):
     # TODO: ERROR HANDLING
+    discover_master()
     product = request.get_json()
     update_product(product, product_id)
     create_images(product_id, product['images'])
@@ -76,6 +81,7 @@ def API_UPDATE_PRODUCT(product_id):
 @app.route("/product/<product_id>", methods=["DELETE"])
 def API_DELETE_PRODUCT(product_id):
     # TODO: ERROR HANDLING
+    discover_master()
     client_key = productKey + product_id
     mainCategory_key = client.hget(client_key, 'mainCategory')
     images_key = client.hget(client_key, 'images')
@@ -99,6 +105,7 @@ def API_DELETE_PRODUCT(product_id):
 @app.route("/product/<product_id>", methods=["GET"])
 def API_FIND_PRODUCT_BY_ID(product_id):
     # TODO: ERROR HANDLING
+    discover_master()
     client_key = productKey + product_id
     product = {}
     for product_prop in client.hgetall(client_key):
@@ -119,6 +126,7 @@ def API_FIND_PRODUCT_BY_ID(product_id):
 # TODO: additional feature that could be cool would be ability to specify with a flag whether we just want product id, name, or full product object.
 @app.route("/products/<category_id>")
 def API_FIND_PRODUCTS_IN_CATEGORY(category_id):
+    discover_master()
     products_in_category = []
     for product_id in client.smembers(productsKey + categoryKey + category_id):
         products_in_category.append(API_FIND_PRODUCT_BY_ID(product_id))
@@ -128,6 +136,7 @@ def API_FIND_PRODUCTS_IN_CATEGORY(category_id):
 @app.route("/products/search")
 def API_SEARCH_FOR_PRODUCT():
     # TODO: ERROR HANDLING
+    discover_master()
     search_term = request.args.get('search_term')
     return_items = []
     for search_result in client.hscan_iter(productNameSearchKey, search_term + "*"):
@@ -135,6 +144,11 @@ def API_SEARCH_FOR_PRODUCT():
     return str(return_items)
 
 # HELPER FUNCTIONS ===================================================
+
+def discover_master():
+    global client
+    sentinel.discover_master(conf['master_group_name'])
+    client = sentinel.master_for(conf['master_group_name'])
 
 def create_new_product(product = {}):
     product_id = product['id']
@@ -199,10 +213,17 @@ def update_category(product_id = -1, category = {}):
     client.hset(category_key, 'products', products_key)
     client.sadd(products_key, product_id)
 
+# master failover handler (not yet figured out)
+# def handle_switch_master():
+#     print('MASTER SWITCHED')
+
 # MAIN METHOD  ===================================================
 
-app.run(host='0.0.0.0', debug = True)
+# listen to pubsub for master failover (haven't figured this out yet)
+# pubsub = r.pubsub()
+# pubsub.subscribe('+switch-master', handle_switch_master)
 
+app.run(host='0.0.0.0', debug = True)
 
 # TESTING  ===================================================
 
