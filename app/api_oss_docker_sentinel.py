@@ -8,7 +8,6 @@ it's pretty brittle at the moment – I've got quite a few todos laying around 
 '''
 
 from redis.sentinel import Sentinel
-from redis import Redis
 from flask import Flask
 from flask import request
 
